@@ -1,1 +1,958 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>WSPR Tone Generator</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap');
 
+:root {
+  --green: #00ff88;
+  --green-dim: #00aa55;
+  --green-dark: #004422;
+  --amber: #ffcc00;
+  --red: #ff4444;
+  --blue: #4488ff;
+  --bg: #030a06;
+  --bg2: #070f09;
+  --bg3: #0a1a0d;
+  --border: #0d2e14;
+  --text: #99ccaa;
+  --text-dim: #3d6644;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Share Tech Mono', monospace;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.07) 2px, rgba(0,0,0,0.07) 4px);
+  pointer-events: none;
+  z-index: 1000;
+}
+
+/* ── HEADER ── */
+header {
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky; top: 0; z-index: 100;
+}
+.logo {
+  font-family: 'Orbitron', monospace;
+  font-weight: 900; font-size: 1.1rem;
+  color: var(--green); letter-spacing: 3px;
+  text-shadow: 0 0 12px rgba(0,255,136,0.6);
+}
+.logo span { color: var(--text-dim); font-weight: 400; }
+.utc-block { text-align: right; }
+.utc-label { font-size: 0.6rem; color: var(--text-dim); letter-spacing: 2px; }
+.utc-time {
+  font-size: 1.05rem; color: var(--green);
+  text-shadow: 0 0 8px rgba(0,255,136,0.4); letter-spacing: 2px;
+}
+
+/* ── COUNTDOWN STRIP ── */
+.countdown-strip {
+  background: var(--bg3);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 16px;
+  display: flex; align-items: center; gap: 16px;
+}
+.countdown-val {
+  font-family: 'Orbitron', monospace; font-size: 1.8rem; font-weight: 700;
+  color: var(--amber); text-shadow: 0 0 16px rgba(255,204,0,0.5);
+  min-width: 56px; text-align: center;
+}
+.countdown-val.urgent { color: var(--red); text-shadow: 0 0 16px rgba(255,80,80,0.6); }
+.window-strip { flex: 2; display: flex; gap: 2px; align-items: center; }
+.win-seg {
+  height: 8px; flex: 1; border-radius: 2px;
+  background: var(--bg2); border: 1px solid var(--border);
+}
+.win-seg.tx-win { background: var(--green-dark); border-color: var(--green-dim); }
+.win-seg.current { background: var(--amber); border-color: var(--amber); box-shadow: 0 0 6px rgba(255,204,0,0.6); }
+.status-badge {
+  padding: 5px 14px; border-radius: 20px;
+  font-size: 0.7rem; font-family: 'Orbitron', monospace; font-weight: 700;
+  letter-spacing: 2px; border: 1px solid; white-space: nowrap;
+}
+.badge-idle  { color: var(--text-dim); border-color: var(--text-dim); }
+.badge-armed { color: var(--amber); border-color: var(--amber); background: rgba(255,204,0,0.08); animation: blink 1.2s infinite; }
+.badge-tx    { color: var(--red); border-color: var(--red); background: rgba(255,80,80,0.08); animation: blink 0.5s infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.35} }
+
+/* ── AUDIO UNLOCK BANNER ── */
+.unlock-banner {
+  background: rgba(255,100,0,0.12);
+  border: 1px solid #884400;
+  border-radius: 4px;
+  padding: 12px 16px;
+  margin-bottom: 14px;
+  display: flex; align-items: center; gap: 12px;
+}
+.ub-icon { font-size: 1.4rem; }
+.ub-text { font-size: 0.78rem; line-height: 1.6; color: #ffaa55; flex: 1; }
+.btn-unlock {
+  background: #884400; border: 1px solid #cc6600;
+  color: #ffcc77; font-family: 'Orbitron', monospace;
+  font-size: 0.7rem; font-weight: 700; letter-spacing: 2px;
+  padding: 10px 16px; border-radius: 3px; cursor: pointer;
+  white-space: nowrap; line-height: 1.5;
+}
+.btn-unlock:active { background: #663300; }
+.unlock-ok {
+  background: rgba(0,255,136,0.08);
+  border: 1px solid var(--green-dark);
+  border-radius: 4px;
+  padding: 8px 14px;
+  margin-bottom: 14px;
+  font-size: 0.75rem;
+  color: var(--green-dim);
+  display: flex; align-items: center; gap: 8px;
+}
+
+/* ── CONTAINER / CARD ── */
+.container { padding: 14px; max-width: 520px; margin: 0 auto; }
+.card {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 4px; margin-bottom: 14px; overflow: hidden;
+}
+.card-head {
+  background: var(--bg3); border-bottom: 1px solid var(--border);
+  padding: 7px 14px; font-size: 0.62rem; letter-spacing: 3px;
+  color: var(--text-dim); display: flex; align-items: center; gap: 8px;
+}
+.card-head::before {
+  content: ''; display: inline-block; width: 6px; height: 6px;
+  border-radius: 50%; background: var(--green-dim); box-shadow: 0 0 6px var(--green);
+}
+.card-body { padding: 14px; }
+
+/* ── FORM ── */
+.field { margin-bottom: 12px; }
+.field:last-child { margin-bottom: 0; }
+label { display: block; font-size: 0.62rem; color: var(--text-dim); letter-spacing: 2px; margin-bottom: 5px; }
+input[type=text], input[type=number], select {
+  width: 100%; background: #000; border: 1px solid var(--border);
+  color: var(--green); font-family: 'Share Tech Mono', monospace;
+  font-size: 1.15rem; padding: 10px 12px; border-radius: 3px;
+  outline: none; letter-spacing: 2px; -webkit-appearance: none;
+}
+input:focus, select:focus { border-color: var(--green-dim); box-shadow: 0 0 0 1px var(--green-dark); }
+select option { background: #000; color: var(--green); }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+/* Volume slider */
+input[type=range] {
+  flex: 1; accent-color: var(--green);
+  background: transparent; -webkit-appearance: none; height: 28px;
+}
+input[type=range]::-webkit-slider-runnable-track {
+  height: 4px; background: var(--border); border-radius: 2px;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 24px; height: 24px;
+  border-radius: 50%; background: var(--green);
+  box-shadow: 0 0 8px rgba(0,255,136,0.5);
+  margin-top: -10px; cursor: pointer;
+}
+.vol-row { display: flex; align-items: center; gap: 10px; }
+.vol-val { min-width: 38px; text-align: right; color: var(--green); font-size: 0.9rem; }
+
+/* Band readout */
+.band-readout {
+  display: flex; align-items: center; justify-content: space-between;
+  background: #000; border: 1px solid var(--border);
+  border-radius: 3px; padding: 10px 12px; margin-top: 10px;
+}
+.br-label { font-size: 0.6rem; color: var(--text-dim); letter-spacing: 1px; }
+.br-freq { font-family: 'Orbitron', monospace; font-size: 1rem; color: var(--green); text-shadow: 0 0 8px rgba(0,255,136,0.4); }
+.br-audio { font-size: 0.8rem; color: var(--blue); }
+
+/* Waterfall */
+.waterfall { display: flex; gap: 1px; height: 30px; align-items: flex-end; margin: 10px 0; }
+.wf-bar { flex: 1; border-radius: 1px 1px 0 0; }
+.wf-bar[data-sym="0"] { background: #001a09; height: 25%; }
+.wf-bar[data-sym="1"] { background: #004422; height: 50%; }
+.wf-bar[data-sym="2"] { background: #006633; height: 75%; }
+.wf-bar[data-sym="3"] { background: #009944; height: 100%; }
+.wf-bar.active { background: var(--green) !important; height: 100% !important; box-shadow: 0 0 8px var(--green); }
+
+/* Progress */
+.progress-wrap {
+  background: #000; border: 1px solid var(--border);
+  border-radius: 3px; height: 14px; overflow: hidden; margin: 8px 0;
+}
+.progress-fill {
+  height: 100%; width: 0%;
+  background: linear-gradient(90deg, var(--green-dark), var(--green));
+  transition: width 0.4s linear; position: relative;
+}
+.progress-fill::after {
+  content: ''; position: absolute; right: 0; top: 0; bottom: 0;
+  width: 4px; background: #fff; box-shadow: 0 0 8px var(--green);
+}
+.progress-stats { display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--text-dim); margin-top: 4px; }
+
+/* Buttons */
+.btn {
+  display: block; width: 100%; padding: 16px; border: 1px solid;
+  border-radius: 3px; font-family: 'Orbitron', monospace; font-weight: 700;
+  font-size: 0.85rem; letter-spacing: 3px; cursor: pointer; margin-bottom: 10px;
+  -webkit-tap-highlight-color: transparent;
+}
+.btn:last-child { margin-bottom: 0; }
+.btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.btn-arm  { background: #001a0a; border-color: var(--green-dim); color: var(--green); }
+.btn-arm:not(:disabled):active  { background: #003018; }
+.btn-test { background: #0a0a1a; border-color: #334488; color: var(--blue); }
+.btn-test:not(:disabled):active { background: #12124a; }
+.btn-stop { background: #1a1200; border-color: #665500; color: var(--amber); }
+.btn-stop:not(:disabled):active { background: #2a1e00; }
+
+/* Instruction box */
+.instr {
+  background: #000; border-left: 3px solid var(--green-dim);
+  border-radius: 0 3px 3px 0; padding: 10px 14px;
+  font-size: 0.78rem; line-height: 1.7; color: var(--text); margin-top: 12px;
+}
+.instr.warn  { border-left-color: var(--amber); }
+.instr.danger{ border-left-color: var(--red); }
+.instr strong { color: var(--green); }
+.instr.warn strong  { color: var(--amber); }
+.instr.danger strong{ color: var(--red); }
+
+/* Protocol grid */
+.proto-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.proto-item { background: #000; border: 1px solid var(--border); border-radius: 3px; padding: 8px 10px; }
+.pi-label { font-size: 0.58rem; color: var(--text-dim); letter-spacing: 1px; }
+.pi-val { font-size: 0.9rem; color: var(--green); margin-top: 2px; }
+
+/* Collapsible */
+.collapsible-btn {
+  background: none; border: 1px solid var(--border);
+  color: var(--text-dim); font-family: 'Share Tech Mono', monospace;
+  font-size: 0.7rem; padding: 5px 12px; border-radius: 3px;
+  cursor: pointer; letter-spacing: 1px; margin-top: 10px;
+}
+.collapsible-content { display: none; margin-top: 12px; }
+.collapsible-content.open { display: block; }
+.freq-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+.freq-table td, .freq-table th { padding: 6px 8px; border: 1px solid var(--border); text-align: left; }
+.freq-table th { color: var(--text-dim); font-size: 0.6rem; letter-spacing: 2px; background: var(--bg3); }
+
+.err-msg {
+  background: rgba(255,50,50,0.1); border: 1px solid #660000;
+  border-radius: 3px; padding: 8px 12px; color: var(--red);
+  font-size: 0.78rem; margin-top: 10px; display: none;
+}
+.err-msg.show { display: block; }
+
+footer { text-align: center; padding: 20px; font-size: 0.6rem; color: var(--text-dim); letter-spacing: 1px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">WSPR<span>·GEN</span></div>
+  <div class="utc-block">
+    <div class="utc-label">UTC</div>
+    <div class="utc-time" id="utcClock">--:--:--</div>
+  </div>
+</header>
+
+<div class="countdown-strip">
+  <div>
+    <div class="utc-label">NEXT WINDOW</div>
+    <div class="countdown-val" id="countdownVal">--s</div>
+  </div>
+  <div class="window-strip" id="windowStrip"></div>
+  <div class="status-badge badge-idle" id="statusBadge">IDLE</div>
+</div>
+
+<div class="container">
+
+  <!-- AUDIO UNLOCK BANNER -->
+  <div class="unlock-banner" id="unlockBanner">
+    <div class="ub-icon">🔇</div>
+    <div class="ub-text">
+      <strong style="color:#ffcc77">Tap UNLOCK first.</strong><br>
+      Also: turn phone volume to MAX and check it is <strong style="color:#ffcc77">NOT on silent/vibrate</strong>.
+    </div>
+    <button class="btn-unlock" onclick="unlockAudio()">UNLOCK<br>AUDIO</button>
+  </div>
+  <div class="unlock-ok" id="unlockOk" style="display:none">
+    ✓ Audio unlocked — speaker active
+  </div>
+
+  <!-- STATION CONFIG -->
+  <div class="card">
+    <div class="card-head">STATION PARAMETERS</div>
+    <div class="card-body">
+      <div class="field">
+        <label>CALLSIGN</label>
+        <input type="text" id="callsign" maxlength="6" placeholder="K1ABC"
+               autocapitalize="characters" autocomplete="off" spellcheck="false"
+               oninput="this.value=this.value.toUpperCase()">
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label>GRID (4-CH MAIDENHEAD)</label>
+          <input type="text" id="grid" maxlength="4" placeholder="FN42"
+                 autocapitalize="characters" autocomplete="off" spellcheck="false"
+                 oninput="this.value=this.value.toUpperCase()">
+        </div>
+        <div class="field">
+          <label>POWER (dBm)</label>
+          <input type="number" id="power" value="37" min="0" max="60">
+        </div>
+      </div>
+      <div class="field">
+        <label>BAND / DIAL FREQUENCY</label>
+        <select id="band" onchange="updateBandInfo()">
+          <option value="1.838100">160m — 1.838100 MHz</option>
+          <option value="3.594100">80m — 3.594100 MHz</option>
+          <option value="7.040100" selected>40m — 7.040100 MHz</option>
+          <option value="10.140200">30m — 10.140200 MHz</option>
+          <option value="14.097100">20m — 14.097100 MHz</option>
+          <option value="18.106100">17m — 18.106100 MHz</option>
+          <option value="21.096100">15m — 21.096100 MHz</option>
+          <option value="24.926100">12m — 24.926100 MHz</option>
+          <option value="28.126100">10m — 28.126100 MHz</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>AUDIO BASE FREQUENCY (Hz) — USB offset, keep 1400–1600</label>
+        <input type="number" id="baseTone" value="1500" min="300" max="2500"
+               oninput="updateBandInfo()">
+      </div>
+      <div class="field">
+        <label>OUTPUT VOLUME — <span id="volPct">100%</span></label>
+        <div class="vol-row">
+          <span style="font-size:0.85rem">🔈</span>
+          <input type="range" id="volSlider" min="0" max="1" step="0.01" value="1"
+                 oninput="setVolume(this.value)">
+          <span style="font-size:0.85rem">🔊</span>
+        </div>
+      </div>
+      <div class="band-readout">
+        <div>
+          <div class="br-label">DIAL FREQ</div>
+          <div class="br-freq" id="dialFreq">7.040100 MHz</div>
+        </div>
+        <div style="text-align:right">
+          <div class="br-label">RF CENTRE</div>
+          <div class="br-freq" id="rfFreq">7.041600 MHz</div>
+        </div>
+        <div style="text-align:right">
+          <div class="br-label">MODE</div>
+          <div class="br-audio">USB</div>
+        </div>
+      </div>
+      <div class="err-msg" id="errMsg"></div>
+    </div>
+  </div>
+
+  <!-- TX STATUS -->
+  <div class="card">
+    <div class="card-head">TRANSMISSION STATUS</div>
+    <div class="card-body">
+      <div class="waterfall" id="waterfall"></div>
+      <div class="progress-wrap">
+        <div class="progress-fill" id="progressFill"></div>
+      </div>
+      <div class="progress-stats">
+        <span id="symCounter">SYM 0 / 162</span>
+        <span id="timeLeft">110.6s remaining</span>
+      </div>
+      <div class="instr" id="instrBox">
+        ① Tap <strong>UNLOCK AUDIO</strong> above and turn phone volume to maximum.<br>
+        ② Enter callsign, grid locator, and TX power.<br>
+        ③ Tune radio to dial frequency in <strong>USB mode</strong>.<br>
+        ④ Place phone speaker ~5 cm from <strong>radio microphone</strong>.<br>
+        ⑤ Tap <strong>TEST TONE</strong> to verify audio, then <strong>ARM</strong>.
+      </div>
+    </div>
+  </div>
+
+  <!-- CONTROLS -->
+  <div class="card">
+    <div class="card-head">TRANSMIT CONTROLS</div>
+    <div class="card-body">
+      <button class="btn btn-arm" id="btnArm" onclick="armForNextWindow()">▶  ARM — NEXT EVEN MINUTE</button>
+      <button class="btn btn-test" id="btnTest" onclick="playTestTone()">♪  TEST TONE (5 SECONDS)</button>
+      <button class="btn btn-stop" id="btnStop" onclick="stopAll(false)" disabled>■  STOP / ABORT</button>
+
+      <div class="instr warn" id="armInstr" style="display:none">
+        <strong>⏱ ARMED</strong> — TX fires automatically at :<strong id="nextMinStr">00</strong> UTC.<br>
+        Position phone at mic now. Radio: USB, volume up, PTT/VOX ready.
+      </div>
+      <div class="instr danger" id="txInstr" style="display:none">
+        <strong>📡 TRANSMITTING</strong> — keep phone steady against mic.<br>
+        Do NOT touch screen. <strong id="txTimeLeft">110</strong>s remaining.
+      </div>
+    </div>
+  </div>
+
+  <!-- PROTOCOL REF -->
+  <div class="card">
+    <div class="card-head">PROTOCOL REFERENCE</div>
+    <div class="card-body">
+      <div class="proto-grid">
+        <div class="proto-item"><div class="pi-label">MODULATION</div><div class="pi-val">4-FSK</div></div>
+        <div class="proto-item"><div class="pi-label">SYMBOL RATE</div><div class="pi-val">1.4648 Bd</div></div>
+        <div class="proto-item"><div class="pi-label">TONE SPACING</div><div class="pi-val">1.4648 Hz</div></div>
+        <div class="proto-item"><div class="pi-label">TX DURATION</div><div class="pi-val">110.6 s</div></div>
+        <div class="proto-item"><div class="pi-label">SYMBOLS</div><div class="pi-val">162</div></div>
+        <div class="proto-item"><div class="pi-label">WINDOW</div><div class="pi-val">2 MIN UTC</div></div>
+      </div>
+      <button class="collapsible-btn" onclick="toggleHelp()">▼ BAND FREQUENCY TABLE</button>
+      <div class="collapsible-content" id="helpContent">
+        <table class="freq-table" style="margin-top:8px">
+          <tr><th>BAND</th><th>DIAL FREQ (USB)</th><th>NOTES</th></tr>
+          <tr><td>160m</td><td>1.838100 MHz</td><td>Night only</td></tr>
+          <tr><td>80m</td><td>3.594100 MHz</td><td>Night/local</td></tr>
+          <tr><td>40m</td><td>7.040100 MHz</td><td>All-rounder</td></tr>
+          <tr><td>30m</td><td>10.140200 MHz</td><td>DX favourite</td></tr>
+          <tr><td>20m</td><td>14.097100 MHz</td><td>Best DX</td></tr>
+          <tr><td>17m</td><td>18.106100 MHz</td><td>Good DX</td></tr>
+          <tr><td>15m</td><td>21.096100 MHz</td><td>Daytime</td></tr>
+          <tr><td>12m</td><td>24.926100 MHz</td><td>Daytime</td></tr>
+          <tr><td>10m</td><td>28.126100 MHz</td><td>Daytime/solar</td></tr>
+        </table>
+        <div class="instr" style="margin-top:10px;font-size:0.72rem">
+          <strong>Operating tips:</strong><br>
+          • Radio in USB, no split mode<br>
+          • Reduce drive so ALC meter stays at zero<br>
+          • VOX works well — tones trigger it immediately<br>
+          • Check spots at <strong>wsprnet.org</strong> or <strong>pskreporter.info</strong>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+<footer>WSPR TONE GENERATOR · K1JT PROTOCOL · USB MODE · 4-FSK</footer>
+
+<script>
+// ═══════════════════════════════════════════════════
+//  WSPR PROTOCOL ENCODING
+// ═══════════════════════════════════════════════════
+const WSPR_SYM_DUR   = 8192 / 12000;   // 0.682667 s per symbol
+const WSPR_SPACING   = 12000 / 8192;   // 1.46484 Hz tone spacing
+const WSPR_SYMBOLS   = 162;
+const WSPR_TX_DUR    = WSPR_SYMBOLS * WSPR_SYM_DUR; // 110.592 s
+
+const SYNC_VEC = [
+  1,1,0,0,0,0,0,0,1,0,0,0,1,1,1,0,0,0,1,0,0,1,0,1,1,1,1,0,0,0,0,0,
+  0,0,1,0,0,1,0,1,0,0,0,0,0,0,1,0,1,1,0,0,1,1,0,1,0,0,0,1,1,0,1,0,
+  0,0,0,1,1,0,1,0,1,0,1,0,0,1,0,0,1,1,1,1,1,0,0,1,1,0,1,0,1,1,0,0,
+  0,1,0,0,0,1,0,0,1,0,1,0,1,1,1,0,1,1,0,0,1,1,0,0,0,0,0,1,0,1,0,0,
+  1,1,0,0,0,0,0,0,0,1,1,0,1,0,1,1,0,0,0,0,1,1,0,1,0,0,0,1,1,1,0,0,
+  0,1
+];
+
+const G1 = 0xF2D05351;
+const G2 = 0xE4613C47;
+
+function popcount32(x) {
+  x = x >>> 0;
+  x -= (x >>> 1) & 0x55555555;
+  x  = (x & 0x33333333) + ((x >>> 2) & 0x33333333);
+  x  = (x + (x >>> 4)) & 0x0f0f0f0f;
+  return (x * 0x01010101) >>> 24;
+}
+
+function convEncode(srcBits) {
+  const bits = srcBits.concat(new Array(31).fill(0));
+  const out = []; let sr = 0;
+  for (let i = 0; i < bits.length; i++) {
+    sr = ((sr << 1) | bits[i]) >>> 0;
+    out.push(popcount32(sr & G1) & 1);
+    out.push(popcount32(sr & G2) & 1);
+  }
+  return out;
+}
+
+function bitRev8(n) {
+  let r = 0;
+  for (let i = 0; i < 8; i++) r = (r << 1) | ((n >> i) & 1);
+  return r;
+}
+
+function interleave(bits) {
+  const result = new Array(162).fill(0);
+  let idx = 0;
+  for (let i = 0; i < 256 && idx < 162; i++) {
+    const j = bitRev8(i);
+    if (j < 162) result[j] = bits[idx++];
+  }
+  return result;
+}
+
+function cval01(c) {
+  if (!c || c === ' ') return 36;
+  if (c >= '0' && c <= '9') return c.charCodeAt(0) - 48;
+  if (c >= 'A' && c <= 'Z') return c.charCodeAt(0) - 55;
+  return 36;
+}
+function cval345(c) {
+  if (!c || c === ' ') return 0;
+  if (c >= 'A' && c <= 'Z') return c.charCodeAt(0) - 64;
+  return 0;
+}
+
+function encodeCallsign(raw) {
+  const call = raw.toUpperCase().padEnd(6, ' ').slice(0, 6);
+  let n = cval01(call[0]);
+  n = n * 36 + cval01(call[1]);
+  n = n * 10 + (call[2] >= '0' && call[2] <= '9' ? call.charCodeAt(2) - 48 : 0);
+  n = n * 27 + cval345(call[3]);
+  n = n * 27 + cval345(call[4]);
+  n = n * 27 + cval345(call[5]);
+  return n;
+}
+
+function encodeGrid(raw) {
+  const g = raw.toUpperCase().padEnd(4, 'A');
+  const f1 = g.charCodeAt(0) - 65;
+  const f2 = g.charCodeAt(1) - 65;
+  const f3 = g.charCodeAt(2) - 48;
+  const f4 = g.charCodeAt(3) - 48;
+  return (179 - 10 * f1 - f3) * 180 + 10 * f2 + f4;
+}
+
+function generateSymbols(callsign, grid, powerDbm) {
+  const n1 = encodeCallsign(callsign);
+  const m  = encodeGrid(grid);
+  const p  = powerDbm + 64;
+  const n2 = m * 128 + p;
+  const srcBits = [];
+  for (let i = 27; i >= 0; i--) srcBits.push((n1 >> i) & 1);
+  for (let i = 21; i >= 0; i--) srcBits.push((n2 >> i) & 1);
+  const encoded     = convEncode(srcBits);
+  const interleaved = interleave(encoded);
+  return interleaved.map((bit, i) => 2 * SYNC_VEC[i] + bit);
+}
+
+// ═══════════════════════════════════════════════════
+//  AUDIO ENGINE
+// ═══════════════════════════════════════════════════
+let audioCtx     = null;
+let masterGain   = null;
+let oscNode      = null;
+let envGain      = null;
+let audioUnlocked = false;
+let currentVol   = 1.0;
+
+function ensureCtx() {
+  if (!audioCtx || audioCtx.state === 'closed') {
+    // No sampleRate override — use device native rate
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    masterGain = audioCtx.createGain();
+    masterGain.gain.value = currentVol;
+    masterGain.connect(audioCtx.destination);
+  }
+  return audioCtx;
+}
+
+// MUST be called from a direct user-gesture handler
+function unlockAudio() {
+  const ctx = ensureCtx();
+
+  const proceed = () => {
+    // Play 100ms of silence — iOS requires actual audio node playback to unlock
+    const buf = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * 0.1), ctx.sampleRate);
+    // Fill with near-silent tone so some devices don't skip it
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = Math.sin(2 * Math.PI * 440 * i / ctx.sampleRate) * 0.001;
+
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(masterGain);
+    src.start(0);
+    src.onended = () => {
+      audioUnlocked = true;
+      document.getElementById('unlockBanner').style.display = 'none';
+      document.getElementById('unlockOk').style.display    = 'flex';
+    };
+  };
+
+  if (ctx.state === 'suspended') {
+    ctx.resume().then(proceed).catch(proceed);
+  } else {
+    proceed();
+  }
+}
+
+function setVolume(v) {
+  currentVol = parseFloat(v);
+  if (masterGain) masterGain.gain.setTargetAtTime(currentVol, audioCtx.currentTime, 0.02);
+  document.getElementById('volPct').textContent = Math.round(currentVol * 100) + '%';
+}
+
+function stopNodes() {
+  if (oscNode) { try { oscNode.stop(); } catch(e) {} try { oscNode.disconnect(); } catch(e) {} oscNode = null; }
+  if (envGain) { try { envGain.disconnect(); } catch(e) {} envGain = null; }
+}
+
+function scheduleSymbols(symbols, baseFreq, startAt) {
+  const ctx = ensureCtx();
+  stopNodes();
+
+  oscNode = ctx.createOscillator();
+  envGain = ctx.createGain();
+  oscNode.connect(envGain);
+  envGain.connect(masterGain);
+  oscNode.type = 'sine';
+
+  // Schedule all 162 frequency steps
+  symbols.forEach((sym, i) => {
+    oscNode.frequency.setValueAtTime(
+      baseFreq + sym * WSPR_SPACING,
+      startAt + i * WSPR_SYM_DUR
+    );
+  });
+
+  const endAt = startAt + symbols.length * WSPR_SYM_DUR;
+
+  // Click-free envelope
+  envGain.gain.setValueAtTime(0, startAt);
+  envGain.gain.linearRampToValueAtTime(1.0, startAt + 0.05);
+  envGain.gain.setValueAtTime(1.0, endAt - 0.05);
+  envGain.gain.linearRampToValueAtTime(0, endAt);
+
+  oscNode.start(startAt);
+  oscNode.stop(endAt);
+
+  return endAt;
+}
+
+// ═══════════════════════════════════════════════════
+//  TEST TONE
+// ═══════════════════════════════════════════════════
+let testTimer = null;
+
+function playTestTone() {
+  if (!audioUnlocked) { unlockAudio(); setTimeout(playTestTone, 400); return; }
+
+  clearTimeout(testTimer);
+  stopAll(true);
+
+  const ctx = ensureCtx();
+  if (ctx.state === 'suspended') { ctx.resume().then(playTestTone); return; }
+
+  const base = parseFloat(document.getElementById('baseTone').value) || 1500;
+  const now  = ctx.currentTime + 0.05;
+
+  // Play symbols 0,1,2,3,0,1,2 so all 4 tones are audible
+  const testSyms = [0,1,2,3,0,1,2,3];
+  scheduleSymbols(testSyms, base, now);
+
+  document.getElementById('instrBox').className = 'instr warn';
+  document.getElementById('instrBox').innerHTML =
+    '🔊 <strong>Can you hear 4 rising tones?</strong><br>' +
+    'If yes — audio is working. Position phone at mic and press ARM.<br>' +
+    'If silent — phone may still be on mute or low volume.';
+
+  testTimer = setTimeout(stopNodes, 7000);
+}
+
+// ═══════════════════════════════════════════════════
+//  TRANSMISSION CONTROL
+// ═══════════════════════════════════════════════════
+let txActive   = false;
+let armedTimer = null;
+let progTimer  = null;
+let txEndAt    = 0;
+let lastHilite = -1;
+
+function armForNextWindow() {
+  const err = validateInputs();
+  if (err) { showError(err); return; }
+  if (!audioUnlocked) { showError('Tap UNLOCK AUDIO first, then ARM.'); return; }
+
+  clearTimeout(armedTimer);
+  stopAll(true);
+
+  // Resume context NOW while we are in the gesture handler
+  const ctx = ensureCtx();
+  const resumeAndArm = () => {
+    const now   = new Date();
+    const msec  = (now.getUTCMinutes() * 60 + now.getUTCSeconds()) * 1000 + now.getUTCMilliseconds();
+    const msUntil = 120000 - (msec % 120000);
+
+    const nextMinDate = new Date(now.getTime() + msUntil);
+    document.getElementById('nextMinStr').textContent =
+      String(nextMinDate.getUTCMinutes()).padStart(2, '0');
+
+    // Pre-generate and display symbols
+    const { call, grid, power } = getParams();
+    const syms = generateSymbols(call, grid, power);
+    buildWaterfall(syms);
+    updateUI('armed');
+
+    armedTimer = setTimeout(() => {
+      if (!txActive) launchTx(syms);
+    }, msUntil - 100); // 100ms early for scheduling headroom
+  };
+
+  if (ctx.state === 'suspended') ctx.resume().then(resumeAndArm);
+  else resumeAndArm();
+}
+
+function launchTx(symbols) {
+  const ctx = ensureCtx();
+  if (ctx.state === 'suspended') { ctx.resume().then(() => launchTx(symbols)); return; }
+
+  clearTimeout(testTimer);
+  const { base } = getParams();
+  const startAt  = ctx.currentTime + 0.15;
+  txEndAt = scheduleSymbols(symbols, base, startAt);
+  txActive = true;
+
+  oscNode.onended = () => {
+    txActive = false;
+    clearInterval(progTimer);
+    updateProgress(1, WSPR_SYMBOLS, 0);
+    highlightSymbol(-1);
+    updateUI('done');
+  };
+
+  startProgressLoop(startAt, txEndAt);
+  updateUI('tx');
+}
+
+function stopAll(silent) {
+  clearTimeout(armedTimer);
+  clearTimeout(testTimer);
+  clearInterval(progTimer);
+  stopNodes();
+  txActive = false;
+  if (!silent) updateUI('idle');
+}
+
+// ═══════════════════════════════════════════════════
+//  PROGRESS
+// ═══════════════════════════════════════════════════
+function startProgressLoop(startAt, endAt) {
+  clearInterval(progTimer);
+  const total = endAt - startAt;
+  progTimer = setInterval(() => {
+    if (!audioCtx) return;
+    const now = audioCtx.currentTime;
+    if (now < startAt) return;
+    if (now >= endAt) { clearInterval(progTimer); return; }
+    const elapsed = now - startAt;
+    const frac    = elapsed / total;
+    const symIdx  = Math.min(Math.floor(elapsed / WSPR_SYM_DUR), 161);
+    const rem     = endAt - now;
+    updateProgress(frac, symIdx, rem);
+    highlightSymbol(symIdx);
+    document.getElementById('txTimeLeft').textContent = rem.toFixed(0);
+  }, 200);
+}
+
+function updateProgress(frac, symIdx, rem) {
+  document.getElementById('progressFill').style.width = (frac * 100).toFixed(1) + '%';
+  document.getElementById('symCounter').textContent   = `SYM ${symIdx} / 162`;
+  document.getElementById('timeLeft').textContent     = rem > 0 ? rem.toFixed(1) + 's remaining' : 'COMPLETE ✓';
+}
+
+// ═══════════════════════════════════════════════════
+//  WATERFALL
+// ═══════════════════════════════════════════════════
+function buildWaterfall(symbols) {
+  const wf = document.getElementById('waterfall');
+  wf.innerHTML = '';
+  lastHilite = -1;
+  symbols.forEach(s => {
+    const bar = document.createElement('div');
+    bar.className = 'wf-bar';
+    bar.dataset.sym = s;
+    wf.appendChild(bar);
+  });
+}
+
+function highlightSymbol(idx) {
+  const wf   = document.getElementById('waterfall');
+  const bars = wf.children;
+  if (lastHilite >= 0 && lastHilite < bars.length) bars[lastHilite].classList.remove('active');
+  if (idx >= 0 && idx < bars.length) bars[idx].classList.add('active');
+  lastHilite = idx;
+}
+
+// ═══════════════════════════════════════════════════
+//  VALIDATION
+// ═══════════════════════════════════════════════════
+function validateInputs() {
+  const call  = document.getElementById('callsign').value.trim().toUpperCase();
+  const grid  = document.getElementById('grid').value.trim().toUpperCase();
+  const power = parseInt(document.getElementById('power').value);
+  if (!call || call.length < 3)                return 'Enter a valid callsign (e.g. K1ABC).';
+  if (!/^[A-Z0-9]{3,6}$/.test(call))          return 'Callsign: 3–6 alphanumeric characters only.';
+  if (!/\d/.test(call))                        return 'Callsign must contain at least one digit.';
+  if (!grid || grid.length < 4)               return 'Grid must be 4 characters (e.g. FN42).';
+  if (!/^[A-R][A-R][0-9][0-9]$/i.test(grid)) return 'Grid: 2 letters (A–R) then 2 digits (e.g. FN42).';
+  if (isNaN(power) || power < 0 || power > 60) return 'Power must be 0–60 dBm.';
+  return null;
+}
+
+function showError(msg) {
+  const el = document.getElementById('errMsg');
+  el.textContent = '⚠ ' + msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 5000);
+}
+
+// ═══════════════════════════════════════════════════
+//  UI STATE MACHINE
+// ═══════════════════════════════════════════════════
+function updateUI(state) {
+  const badge  = document.getElementById('statusBadge');
+  const btnArm = document.getElementById('btnArm');
+  const btnTest= document.getElementById('btnTest');
+  const btnStop= document.getElementById('btnStop');
+  const instr  = document.getElementById('instrBox');
+  const armI   = document.getElementById('armInstr');
+  const txI    = document.getElementById('txInstr');
+
+  armI.style.display = 'none';
+  txI.style.display  = 'none';
+  instr.style.display= 'block';
+
+  switch(state) {
+    case 'idle':
+      badge.className = 'status-badge badge-idle'; badge.textContent = 'IDLE';
+      btnArm.disabled = false; btnTest.disabled = false; btnStop.disabled = true;
+      instr.className = 'instr';
+      instr.innerHTML =
+        '① Tap <strong>UNLOCK AUDIO</strong> above and turn phone volume to maximum.<br>' +
+        '② Enter callsign, grid locator, and TX power.<br>' +
+        '③ Tune radio to dial frequency in <strong>USB mode</strong>.<br>' +
+        '④ Place phone speaker ~5 cm from <strong>radio microphone</strong>.<br>' +
+        '⑤ Tap <strong>TEST TONE</strong> to verify audio, then <strong>ARM</strong>.';
+      document.getElementById('progressFill').style.width = '0%';
+      document.getElementById('symCounter').textContent = 'SYM 0 / 162';
+      document.getElementById('timeLeft').textContent = '110.6s remaining';
+      break;
+
+    case 'armed':
+      badge.className = 'status-badge badge-armed'; badge.textContent = 'ARMED';
+      btnArm.disabled = true; btnTest.disabled = true; btnStop.disabled = false;
+      instr.style.display = 'none'; armI.style.display = 'block';
+      break;
+
+    case 'tx':
+      badge.className = 'status-badge badge-tx'; badge.textContent = 'TX';
+      btnArm.disabled = true; btnTest.disabled = true; btnStop.disabled = false;
+      instr.style.display = 'none'; txI.style.display = 'block';
+      break;
+
+    case 'done':
+      badge.className = 'status-badge badge-idle'; badge.textContent = 'DONE';
+      btnArm.disabled = false; btnTest.disabled = false; btnStop.disabled = true;
+      instr.className = 'instr';
+      instr.innerHTML =
+        '✓ <strong>Transmission complete!</strong><br>' +
+        'Check <strong>wsprnet.org</strong> or <strong>pskreporter.info</strong> in a few minutes to see who decoded you.';
+      break;
+  }
+}
+
+// ═══════════════════════════════════════════════════
+//  BAND INFO
+// ═══════════════════════════════════════════════════
+function getParams() {
+  return {
+    call : document.getElementById('callsign').value.trim().toUpperCase(),
+    grid : document.getElementById('grid').value.trim().toUpperCase(),
+    power: parseInt(document.getElementById('power').value),
+    base : parseFloat(document.getElementById('baseTone').value) || 1500
+  };
+}
+
+function updateBandInfo() {
+  const dial = parseFloat(document.getElementById('band').value);
+  const base = parseFloat(document.getElementById('baseTone').value) || 1500;
+  document.getElementById('dialFreq').textContent = dial.toFixed(6) + ' MHz';
+  document.getElementById('rfFreq').textContent   = (dial + base / 1e6).toFixed(6) + ' MHz';
+}
+
+function toggleHelp() {
+  const c = document.getElementById('helpContent');
+  c.classList.toggle('open');
+  document.querySelector('.collapsible-btn').textContent =
+    c.classList.contains('open') ? '▲ BAND FREQUENCY TABLE' : '▼ BAND FREQUENCY TABLE';
+}
+
+// ═══════════════════════════════════════════════════
+//  UTC CLOCK & WINDOW STRIP
+// ═══════════════════════════════════════════════════
+function updateClock() {
+  const now = new Date();
+  const h   = String(now.getUTCHours()).padStart(2,'0');
+  const m   = String(now.getUTCMinutes()).padStart(2,'0');
+  const s   = String(now.getUTCSeconds()).padStart(2,'0');
+  document.getElementById('utcClock').textContent = `${h}:${m}:${s}`;
+
+  const secInPeriod = now.getUTCMinutes() * 60 + now.getUTCSeconds();
+  const secLeft     = 120 - (secInPeriod % 120);
+  const cd = document.getElementById('countdownVal');
+  cd.textContent = String(secLeft).padStart(2,'0') + 's';
+  cd.className   = secLeft <= 10 ? 'countdown-val urgent' : 'countdown-val';
+
+  const strip = document.getElementById('windowStrip');
+  if (strip.children.length !== 30) {
+    strip.innerHTML = '';
+    for (let i = 0; i < 30; i++) {
+      const seg = document.createElement('div');
+      seg.className = 'win-seg';
+      strip.appendChild(seg);
+    }
+  }
+  const pos    = 120 - secLeft;
+  const curSeg = Math.floor(pos / 4);
+  for (let i = 0; i < 30; i++) {
+    const seg = strip.children[i];
+    seg.className = 'win-seg' +
+      (i * 4 < 92 ? ' tx-win' : '') +
+      (i === curSeg ? ' current' : '');
+  }
+}
+
+// ═══════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════
+updateUI('idle');
+updateBandInfo();
+setInterval(updateClock, 500);
+updateClock();
+
+// Placeholder waterfall
+(function() {
+  const wf = document.getElementById('waterfall');
+  for (let i = 0; i < 162; i++) {
+    const bar = document.createElement('div');
+    bar.className = 'wf-bar';
+    bar.dataset.sym = i % 4;
+    wf.appendChild(bar);
+  }
+})();
+</script>
+</body>
+</html>
